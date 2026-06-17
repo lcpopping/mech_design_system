@@ -976,7 +976,7 @@
                             <button class="btn btn-secondary" id="mot-btn-prev" onclick="motPrev()" style="display:none;">上一步</button>
                             <div style="display:flex; gap:12px;">
                                 <button class="btn btn-secondary" id="mot-btn-knowledge" onclick="motShowKnowledgeBase()" style="display:none;">📚 知识库</button>
-                                <button class="btn btn-primary" id="mot-btn-next" onclick="motNext()">下一步</button>
+                                <button class="btn btn-primary" id="mot-btn-next">下一步</button>
                             </div>
                         </div>
                     </div>
@@ -2457,6 +2457,7 @@
         }
 
         function swMotType(t, el) {
+            console.log('swMotType called', { type: t });
             curMotType = t;
             motState.motType = t;
             // Update type cards selection
@@ -2507,11 +2508,15 @@
         }
 
         async function cMotor() {
+            if (motState.calculating) { console.log("Already calculating, skip"); return; }
+            motState.calculating = true;
+            console.log('cMotor called', { motState: motState });
             var m = +G('m-mot').value, v = +G('v-mot').value, mu = +G('mu-mot').value;
             var dir = G('dir-mot').value, trans = G('trans-mot').value;
             var i = Math.max(+(G('i-mot').value || 1), 0.001);
             var Ks = Math.max(+(G('ks-mot').value || 1), 0.001);
-            if (!m || !v) { showToast('请输入负载质量与目标速度', 'warning'); return; }
+            console.log('Input values:', { m, v, dir, trans });
+            if (!m || !v) { showToast('请输入负载质量与目标速度', 'warning'); motState.calculating = false; return; }
 
             // Convert mm/s to m/s for API
             var speedMs = v / 1000;
@@ -2541,16 +2546,21 @@
             }
 
             try {
+                console.log('Fetching API:', API + '/servo-motors/select', params);
                 var res = await fetch(API + '/servo-motors/select', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(params)
                 }).then(r => r.json());
+                console.log('API Response:', res);
 
-                var rsEl = G('rs-motor');
+                var rsEl = G('mot-results');
+                console.log('rsEl:', rsEl);
+                console.log('res.success:', res.success);
                 if (!res.success) {
                     rsEl.innerHTML = '<div class="result-line"><span class="result-label">错误</span><span class="result-value bad">' + (res.error || '计算失败') + '</span></div>';
                     rsEl.classList.add('show');
+                    motState.calculating = false;
                     return;
                 }
 
@@ -2562,6 +2572,7 @@
                 var loadTypeNames = { h: '水平', t: '倾斜', v: '垂直' };
                 var transNames = { direct: '直联', belt: '同步带', ball_screw: '滚珠丝杆', planetary_screw: '行星滚柱丝杆', rack: '齿条' };
 
+                console.log('curMotType:', curMotType);
                 if (curMotType === 'servo') {
                     html += resultLine('负载类型', '伺服电机');
                     html += resultLine('重力负载', fmt(data.calculation_details?.fG || 0, 1) + ' N');
@@ -2615,6 +2626,7 @@
                     }
                 }
 
+                console.log('html length:', html.length);
                 // Add candidate motors
                 if (candidates.length > 0) {
                     html += '<div class="motor-candidates"><div style="font-weight:600;margin-bottom:8px;">候选电机:</div>';
@@ -2632,12 +2644,15 @@
                     html += '</div>';
                 }
 
+                console.log('Setting innerHTML, html:', html.substring(0, 100));
                 rsEl.innerHTML = html;
                 rsEl.classList.add('show');
+                motState.calculating = false;
 
             } catch (e) {
-                G('rs-motor').innerHTML = '<div class="result-line"><span class="result-label">错误</span><span class="result-value bad">' + e.message + '</span></div>';
-                G('rs-motor').classList.add('show');
+                rsEl.innerHTML = '<div class="result-line"><span class="result-label">错误</span><span class="result-value bad">' + e.message + '</span></div>';
+                rsEl.classList.add('show');
+                motState.calculating = false;
             }
         }
 
@@ -2664,7 +2679,7 @@
         }
 
         // Motor Wizard State
-        window.motState = { currentStep: 1, mode: 'select_by_params', motType: 'servo', candidates: [], result: null };
+        window.motState = { currentStep: 1, mode: 'select_by_params', motType: 'servo', candidates: [], result: null, calculating: false };
 
         function motSelectMode(mode, el) {
             motState.mode = mode;
@@ -2729,6 +2744,7 @@
         }
 
         function motNext() {
+            console.log('motNext called', { mode: motState.mode, step: motState.currentStep });
             if (motState.mode === 'knowledge') {
                 motShowKnowledgeBase();
                 return;
