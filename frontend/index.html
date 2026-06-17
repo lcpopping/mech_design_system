@@ -2833,7 +2833,7 @@
                 if (res.success) {
                     motState.result = res.data;
                     motState.candidates = res.data.candidates || [];
-                    motShowResults();
+                    renderMotorCandidates();
                     motState.currentStep = 3;
                     motUpdateSteps();
                     G('mot-step1').style.display = 'none';
@@ -2904,6 +2904,203 @@
             }
 
             container.innerHTML = html;
+        }
+
+        // Motor selection: render candidate list (step 1 of results)
+        function renderMotorCandidates() {
+            var data = motState.result;
+            var candidates = motState.candidates;
+            var container = G('mot-results');
+
+            // Show required specs first
+            var html = '<div class="param-section"><h4>计算结果 - 需求参数</h4>';
+            html += '<div class="results-grid">';
+            html += '<div class="result-card"><div class="rank">所需扭矩</div><div class="model">' + fmt(data.required_torque_nm, 3) + ' N·m</div></div>';
+            html += '<div class="result-card"><div class="rank">所需功率</div><div class="model">' + fmt(data.required_power_kw, 3) + ' kW</div></div>';
+            html += '<div class="result-card"><div class="rank">电机转速</div><div class="model">' + fmt(data.required_speed_rpm, 0) + ' rpm</div></div>';
+            html += '<div class="result-card"><div class="rank">负载惯量</div><div class="model">' + fmt(data.load_inertia_kgm2, 5) + ' kg·m²</div></div>';
+            html += '</div></div>';
+
+            // Candidate list
+            html += '<div class="param-section"><h4>候选电机列表</h4>';
+            html += '<div id="motor-candidates-list">';
+            if (candidates.length === 0) {
+                html += '<p style="color:#718096;">未找到符合条件的电机</p>';
+            } else {
+                candidates.forEach(function(c, idx) {
+                    var m = c.motor;
+                    var sf = c.safety_factor || 0;
+                    var sfClass = sf >= 2 ? 'good' : sf >= 1.5 ? '' : 'bad';
+                    var isRecommended = idx === 0;
+                    html += '<div class="result-card ' + (isRecommended ? 'recommended' : '') + '" onclick="selectMotor(' + m.id + ', this)">';
+                    html += '<div class="rank">' + (isRecommended ? '⭐ 推荐' : '候选 ' + (idx + 1)) + '</div>';
+                    html += '<div class="model">' + m.model + '</div>';
+                    html += '<div class="dims">功率 ' + m.power_w + 'W | 扭矩 ' + m.rated_torque_nm + 'Nm | 转速 ' + m.rated_speed_rpm + 'rpm</div>';
+                    html += '<div class="sf ' + sfClass + '">安全系数: ' + sf.toFixed(1) + 'x</div>';
+                    html += '</div>';
+                });
+            }
+            html += '</div></div>';
+
+            container.innerHTML = html;
+        }
+
+        // Motor selection: select a candidate and show detailed report
+        async function selectMotor(motorId, el) {
+            // Highlight selected
+            var list = document.getElementById('motor-candidates-list');
+            if (list) {
+                list.querySelectorAll('.result-card').forEach(function(c) { c.classList.remove('recommended'); });
+            }
+            if (el) el.classList.add('recommended');
+
+            // Find candidate data
+            var candidate = null;
+            motState.candidates.forEach(function(c) {
+                if (c.motor.id === motorId) candidate = c;
+            });
+            if (!candidate) return;
+
+            // Get full motor info via API
+            try {
+                var params = {
+                    load_mass_kg: +G('m-mot').value,
+                    speed_ms: +G('v-mot').value / 1000,
+                    speed_rpm: 0,
+                    motion_type: 'linear',
+                    load_type: G('dir-mot').value,
+                    transmission_type: G('trans-mot').value,
+                    reduction_ratio: Math.max(+(G('i-mot').value || 1), 0.001),
+                    safety_factor: Math.max(+(G('ks-mot').value || 1), 0.001),
+                    motor_id: motorId
+                };
+                var res = await fetch(API + '/servo-motors/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                }).then(function(r) { return r.json(); });
+
+                if (res.success) {
+                    renderMotorFinalReport(res.data);
+                } else {
+                    showToast('获取电机详情失败', 'error');
+                }
+            } catch (e) {
+                showToast('请求失败: ' + e.message, 'error');
+            }
+        }
+
+        // Motor selection: render final detailed report
+        function renderMotorFinalReport(data) {
+            window.motorSpec = data;
+            var recommended = data.recommended;
+            var candidates = data.candidates || [];
+            var container = G('mot-results');
+
+            var html = '<div class="param-section"><h4>计算结果 - 需求参数</h4>';
+            html += '<div class="results-grid">';
+            html += '<div class="result-card"><div class="rank">所需扭矩</div><div class="model">' + fmt(data.required_torque_nm, 3) + ' N·m</div></div>';
+            html += '<div class="result-card"><div class="rank">所需功率</div><div class="model">' + fmt(data.required_power_kw, 3) + ' kW</div></div>';
+            html += '<div class="result-card"><div class="rank">电机转速</div><div class="model">' + fmt(data.required_speed_rpm, 0) + ' rpm</div></div>';
+            html += '<div class="result-card"><div class="rank">负载惯量</div><div class="model">' + fmt(data.load_inertia_kgm2, 5) + ' kg·m²</div></div>';
+            html += '</div></div>';
+
+            if (recommended) {
+                var m = recommended.motor;
+                var chk = recommended.suitability_check || {};
+                var inertiaRatio = chk.inertia_ratio || 0;
+                var inertiaClass = inertiaRatio <= 3 ? 'good' : inertiaRatio <= 5 ? '' : 'bad';
+
+                html += '<div class="param-section"><h4>选型结果</h4>';
+                html += '<div class="report-header"><h3>选型结果</h3>';
+                html += '<div class="model">' + m.model + '</div>';
+                html += '<div>功率: ' + m.power_w + 'W | 扭矩: ' + m.rated_torque_nm + 'Nm | 转速: ' + m.rated_speed_rpm + 'rpm</div>';
+                html += '</div>';
+
+                html += '<div class="param-section"><h4>详细参数</h4>';
+                html += '<div class="spec-section">';
+                html += '<div class="spec-row"><span class="label">型号</span><span class="value">' + m.model + '</span></div>';
+                html += '<div class="spec-row"><span class="label">额定功率</span><span class="value">' + m.power_w + ' W</span></div>';
+                html += '<div class="spec-row"><span class="label">额定扭矩</span><span class="value">' + m.rated_torque_nm + ' Nm</span></div>';
+                html += '<div class="spec-row"><span class="label">额定转速</span><span class="value">' + m.rated_speed_rpm + ' rpm</span></div>';
+                html += '<div class="spec-row"><span class="label">转子惯量</span><span class="value">' + m.inertia_kgm2 + ' kg·m²</span></div>';
+                if (m.motor_type) html += '<div class="spec-row"><span class="label">电机类型</span><span class="value">' + m.motor_type + '</span></div>';
+                if (m.stator_length) html += '<div class="spec-row"><span class="label">定子长度</span><span class="value">' + m.stator_length + ' mm</span></div>';
+                html += '</div></div>';
+
+                html += '<div class="param-section"><h4>校核结果</h4>';
+                html += '<div class="spec-section">';
+                html += '<div class="spec-row"><span class="label">扭矩校验</span><span class="value ' + (chk.torque_ok ? 'pass' : 'fail') + '">' + (chk.torque_ok ? '通过' : '未通过') + '</span></div>';
+                html += '<div class="spec-row"><span class="label">转速校验</span><span class="value ' + (chk.speed_ok ? 'pass' : 'fail') + '">' + (chk.speed_ok ? '通过' : '未通过') + '</span></div>';
+                html += '<div class="spec-row"><span class="label">惯量比 JL/JM</span><span class="value ' + inertiaClass + '">' + fmt(inertiaRatio, 2) + '</span></div>';
+                html += '</div></div>';
+
+                html += '<div class="param-section"><h4>推荐原因</h4>';
+                html += '<div class="spec-section">';
+                html += '<div class="spec-row"><span class="label">安全系数</span><span class="value">' + (chk.safety_factor || 0).toFixed(2) + 'x</span></div>';
+                html += '<div class="spec-row"><span class="label">负载惯量</span><span class="value">' + fmt(data.load_inertia_kgm2, 5) + ' kg·m²</span></div>';
+                html += '<div class="spec-row"><span class="label">惯量匹配</span><span class="value">' + (inertiaRatio <= 5 ? '符合 (≤5)' : '偏大 (>5)') + '</span></div>';
+                html += '</div></div>';
+            }
+
+            // Export button
+            html += '<div class="param-section">';
+            html += '<button class="btn" onclick="exportMotorReport()">导出Excel</button>';
+            html += ' <button class="btn" onclick="renderMotorCandidates()">返回列表</button>';
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        // Motor selection: export report to Excel
+        async function exportMotorReport() {
+            if (!window.motorSpec) {
+                showToast('请先完成选型', 'warning');
+                return;
+            }
+            try {
+                var data = window.motorSpec;
+                var m = data.recommended ? data.recommended.motor : {};
+                var chk = data.recommended ? (data.recommended.suitability_check || {}) : {};
+                var inertiaRatio = chk.inertia_ratio || 0;
+
+                // Build Excel data as array of arrays
+                var rows = [
+                    ['电机选型报告'],
+                    ['项目', '参数'],
+                    ['型号', m.model || ''],
+                    ['额定功率 (W)', m.power_w || ''],
+                    ['额定扭矩 (Nm)', m.rated_torque_nm || ''],
+                    ['额定转速 (rpm)', m.rated_speed_rpm || ''],
+                    ['转子惯量 (kg·m²)', m.inertia_kgm2 || ''],
+                    ['电机类型', m.motor_type || ''],
+                    [],
+                    ['需求参数', ''],
+                    ['所需扭矩 (N·m)', data.required_torque_nm ? data.required_torque_nm.toFixed(3) : ''],
+                    ['所需功率 (kW)', data.required_power_kw ? data.required_power_kw.toFixed(3) : ''],
+                    ['电机转速 (rpm)', data.required_speed_rpm ? Math.round(data.required_speed_rpm) : ''],
+                    ['负载惯量 (kg·m²)', data.load_inertia_kgm2 ? data.load_inertia_kgm2.toFixed(5) : ''],
+                    [],
+                    ['校核结果', ''],
+                    ['扭矩校验', chk.torque_ok ? '通过' : '未通过'],
+                    ['转速校验', chk.speed_ok ? '通过' : '未通过'],
+                    ['惯量比 JL/JM', inertiaRatio.toFixed(2)],
+                    ['安全系数', chk.safety_factor ? chk.safety_factor.toFixed(2) : '']
+                ];
+
+                var csvContent = rows.map(function(r) { return r.join('\t'); }).join('\n');
+                var blob = new Blob(['﻿' + csvContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                var model = m.model || 'motor';
+                var date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+                a.download = '电机选型_' + model + '_' + date + '.xlsx';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                showToast('导出失败: ' + e.message, 'error');
+            }
         }
 
         function motReset() {
