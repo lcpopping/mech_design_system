@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>机械设计辅助系统 - 轴承选型</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; }
+
+        .app { display: flex; min-height: 100vh; }
+
+        /* Left Nav */
+        .left-nav { width: 220px; background: linear-gradient(180deg, #1a365d 0%, #2c5282 100%); color: white; display: flex; flex-direction: column; }
+        .nav-header { padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .nav-header .logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; }
+        .nav-header .logo-icon { font-size: 28px; }
+        .nav-items { flex: 1; padding: 16px 0; }
+        .nav-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 20px; border: none; background: transparent; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 14px; transition: all 0.2s; border-left: 4px solid transparent; }
+        .nav-item:hover { background: rgba(255,255,255,0.1); color: white; }
+        .nav-item.active { background: rgba(255,255,255,0.15); color: white; border-left-color: #63b3ed; }
+        .nav-item .icon { font-size: 20px; }
+
+        /* Main */
+        .main { flex: 1; display: flex; flex-direction: column; }
+        .top-bar { height: 60px; background: white; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; padding: 0 24px; }
+        .top-bar h1 { font-size: 18px; font-weight: 600; color: #1a365d; }
+        .content { flex: 1; padding: 24px; overflow-y: auto; }
+
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Wizard Card */
+        .wizard-card { background: white; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow: hidden; max-width: 900px; margin: 0 auto; }
+
+        /* Wizard Steps */
+        .wizard-steps { display: flex; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 20px 32px; }
+        .wizard-step { display: flex; align-items: center; flex: 1; }
+        .step-circle { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; margin-right: 12px; }
+        .step-circle.pending { background: #e2e8f0; color: #718096; }
+        .step-circle.active { background: #3182ce; color: white; }
+        .step-circle.completed { background: #38a169; color: white; }
+        .step-label { font-size: 14px; color: #4a5568; }
+        .step-label.active { color: #3182ce; font-weight: 600; }
+        .step-line { flex: 1; height: 2px; background: #e2e8f0; margin: 0 16px; }
+        .step-line.completed { background: #38a169; }
+
+        /* Wizard Content */
+        .wizard-content { padding: 32px; }
+
+        /* Step 1: Type Selection */
+        .type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .type-card { border: 2px solid #e2e8f0; border-radius: 12px; padding: 24px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .type-card:hover { border-color: #63b3ed; }
+        .type-card.selected { border-color: #3182ce; background: #ebf8ff; }
+        .type-card .icon { font-size: 48px; margin-bottom: 12px; }
+        .type-card .name { font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 8px; }
+        .type-card .desc { font-size: 13px; color: #718096; }
+
+        /* Step 2: Parameters Form */
+        .param-section { margin-bottom: 24px; }
+        .param-section h4 { font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 13px; color: #4a5568; font-weight: 500; }
+        .form-group input, .form-group select { padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 14px; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #3182ce; }
+
+        /* Step 3: Results */
+        .results-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+        .result-card { background: #f8fafc; border-radius: 12px; padding: 20px; border: 2px solid #e2e8f0; cursor: pointer; transition: all 0.2s; }
+        .result-card:hover { border-color: #63b3ed; }
+        .result-card.recommended { border-color: #38a169; background: #f0fff4; }
+        .result-card .rank { font-size: 12px; color: #718096; margin-bottom: 8px; }
+        .result-card .model { font-size: 18px; font-weight: 600; color: #2d3748; margin-bottom: 8px; }
+        .result-card .dims { font-size: 13px; color: #4a5568; }
+        .result-card .sf { font-size: 20px; font-weight: 700; color: #3182ce; margin-top: 8px; }
+        .result-card .sf.good { color: #38a169; }
+        .result-card .sf.bad { color: #e53e3e; }
+
+        /* Step 4: Final Report */
+        .report-header { background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%); color: white; border-radius: 12px; padding: 32px; text-align: center; margin-bottom: 24px; }
+        .report-header h3 { font-size: 24px; margin-bottom: 8px; }
+        .report-header .model { font-size: 32px; font-weight: 700; }
+        .report-specs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .spec-item { background: #f8fafc; border-radius: 8px; padding: 16px; text-align: center; }
+        .spec-item .value { font-size: 20px; font-weight: 600; color: #2d3748; }
+        .spec-item .label { font-size: 12px; color: #718096; margin-top: 4px; }
+        .spec-section { margin-bottom: 20px; }
+        .spec-section h4 { font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 12px; }
+        .spec-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .spec-row:last-child { border-bottom: none; }
+        .spec-row .label { color: #718096; }
+        .spec-row .value { font-weight: 600; color: #2d3748; }
+        .spec-row .pass { color: #38a169; }
+        .spec-row .fail { color: #e53e3e; }
+
+        /* Wizard Footer */
+        .wizard-footer { display: flex; justify-content: space-between; padding: 20px 32px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+        .btn-secondary { background: #e2e8f0; color: #4a5568; }
+        .btn-secondary:hover { background: #cbd5e0; }
+        .btn-primary { background: #3182ce; color: white; }
+        .btn-primary:hover { background: #2c5282; }
+        .btn-success { background: #38a169; color: white; }
+        .btn-success:hover { background: #2f855a; }
+
+        /* Status */
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .status-pass { background: #c6f6d5; color: #22543d; }
+        .status-fail { background: #fed7d7; color: #822727; }
+
+        /* Reference Values */
+        .ref-values { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .ref-tag { padding: 2px 8px; background: #ebf8ff; color: #3182ce; border-radius: 10px; font-size: 11px; cursor: pointer; transition: all 0.2s; }
+        .ref-tag:hover { background: #3182ce; color: white; }
+
+        /* Module Grid */
+        .module-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; max-width: 800px; margin: 40px auto; }
+        .module-card { display: flex; flex-direction: column; align-items: center; padding: 32px 20px; background: white; border-radius: 12px; cursor: pointer; transition: all 0.2s; border: 2px solid #e2e8f0; }
+        .module-card:hover { border-color: #3182ce; transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        .module-card .icon { font-size: 48px; margin-bottom: 12px; }
+        .module-card .name { font-size: 16px; font-weight: 600; color: #2d3748; margin-bottom: 4px; }
+        .module-card .desc { font-size: 12px; color: #718096; }
+
+        /* Knowledge Base */
+        .knowledge-container { max-width: 900px; margin: 0 auto; }
+        .kb-section { margin-bottom: 16px; }
+        .kb-section-header { display: flex; align-items: center; padding: 16px 20px; background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%); color: white; border-radius: 12px; cursor: pointer; font-size: 16px; font-weight: 600; }
+        .kb-section-header:hover { opacity: 0.9; }
+        .kb-section-header .arrow { margin-right: 12px; transition: transform 0.3s; }
+        .kb-section-header.open .arrow { transform: rotate(90deg); }
+        .kb-section-content { display: none; background: white; border-radius: 0 0 12px 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .kb-section-content.open { display: block; }
+        .kb-card { display: flex; align-items: flex-start; gap: 16px; padding: 16px; background: #f8fafc; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #3182ce; }
+        .kb-card:last-child { margin-bottom: 0; }
+        .kb-card-icon { font-size: 24px; flex-shrink: 0; }
+        .kb-card-content h4 { font-size: 15px; color: #2d3748; margin-bottom: 8px; }
+        .kb-card-content p { font-size: 13px; color: #4a5568; line-height: 1.6; }
+        .kb-card-content ul { margin: 8px 0 0 20px; font-size: 13px; color: #4a5568; line-height: 1.8; }
+        .kb-card-content li { margin-bottom: 4px; }
+        .kb-tip { background: #fffbeb; border-left-color: #f59e0b; }
+        .kb-warning { background: #fef2f2; border-left-color: #ef4444; }
+
+        /* Knowledge Base Inline Styles */
+        .kb-category { margin-bottom: 12px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .kb-cat-header { display: flex; align-items: center; padding: 14px 16px; background: #f8fafc; cursor: pointer; font-weight: 600; font-size: 14px; color: #2d3748; }
+        .kb-cat-header:hover { background: #edf2f7; }
+        .kb-cat-header .arrow { margin-right: 10px; transition: transform 0.3s; font-size: 10px; }
+        .kb-cat-header.open .arrow { transform: rotate(90deg); }
+        .kb-cat-content { display: none; padding: 16px; background: white; }
+        .kb-cat-content.open { display: block; }
+        .kb-item { padding: 10px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.6; color: #4a5568; border-left: 3px solid #3182ce; }
+        .kb-item:last-child { margin-bottom: 0; }
+        .kb-item.kb-tip { background: #fffbeb; border-left-color: #f59e0b; }
+        .kb-item.kb-warning { background: #fef2f2; border-left-color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <nav class="left-nav">
+            <div class="nav-header">
+                <div class="logo">
+                    <span class="logo-icon">⚙️</span>
+                    <span>机械设计</span>
+                </div>
+            </div>
+            <div class="nav-items">
+                <button class="nav-item" onclick="showPage('home')">
+                    <span class="icon">🏠</span><span>首页</span>
+                </button>
+                <button class="nav-item active" onclick="showPage('bearing')">
+                    <span class="icon">🔧</span><span>轴承选型</span>
+                </button>
+            </div>
+        </nav>
+
+        <main class="main">
+            <div class="top-bar">
+                <h1 id="page-title">轴承选型向导</h1>
+            </div>
+            <div class="content">
+                <!-- Home Page -->
+                <div id="page-home" class="page">
+                    <div class="module-grid">
+                        <div class="module-card" onclick="showPage('bearing')">
+                            <span class="icon">🔧</span>
+                            <span class="name">轴承选型</span>
+                            <span class="desc">专业轴承选型计算</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bearing Wizard Page -->
+                <div id="page-bearing" class="page active">
+                    <div class="wizard-card">
+                        <!-- Steps Indicator -->
+                        <div class="wizard-steps">
+                            <div class="wizard-step">
+                                <div class="step-circle active" id="step1-circle">1</div>
+                                <span class="step-label active" id="step1-label">选择类型</span>
+                            </div>
+                            <div class="step-line" id="line1-2"></div>
+                            <div class="wizard-step">
+                                <div class="step-circle pending" id="step2-circle">2</div>
+                                <span class="step-label" id="step2-label">工况参数</span>
+                            </div>
+                            <div class="step-line" id="line2-3"></div>
+                            <div class="wizard-step">
+                                <div class="step-circle pending" id="step3-circle">3</div>
+                                <span class="step-label" id="step3-label">选择型号</span>
+                            </div>
+                            <div class="step-line" id="line3-4"></div>
+                            <div class="wizard-step">
+                                <div class="step-circle pending" id="step4-circle">4</div>
+                                <span class="step-label" id="step4-label">选型结果</span>
+                            </div>
+                        </div>
+
+                        <!-- Wizard Content -->
+                        <div class="wizard-content" id="wizard-content">
+                            <!-- Step 1: Type Selection -->
+                            <div id="step1" class="wizard-step-content">
+                                <h3 style="margin-bottom: 20px; font-size: 18px; color: #2d3748;">选择功能</h3>
+                                <div class="type-grid">
+                                    <div class="type-card selected" onclick="selectMode('select_by_params', this)" id="mode-select-card">
+                                        <div class="icon">🔍</div>
+                                        <div class="name">参数选型</div>
+                                        <div class="desc">输入工况参数，系统推荐合适的轴承型号</div>
+                                    </div>
+                                    <div class="type-card" onclick="selectMode('verify_model', this)" id="mode-verify-card">
+                                        <div class="icon">✓</div>
+                                        <div class="name">型号校核</div>
+                                        <div class="desc">选择轴承型号，校核其是否满足可靠性要求</div>
+                                    </div>
+                                    <div class="type-card" onclick="selectMode('knowledge', this)" id="mode-knowledge-card">
+                                        <div class="icon">📚</div>
+                                        <div class="name">轴承知识库</div>
+                                        <div class="desc">轴承使用、设计、安装、维护和故障排查指南</div>
+                                    </div>
+                                </div>
+
+                                <!-- 轴承类型选择（两种模式都需要） -->
+                                <div id="type-section" style="margin-top: 24px;">
+                                    <h4 style="margin-bottom: 16px; color: #4a5568;">请选择轴承类型</h4>
+                                    <div class="type-grid" style="grid-template-columns: repeat(3, 1fr);">
+                                        <div class="type-card selected" onclick="selectType('deep_groove', this)" data-type="deep_groove">
+                                            <div class="icon">⚪</div>
+                                            <div class="name">深沟球轴承</div>
+                                            <div class="desc">6000系列 - 高速轻载</div>
+                                        </div>
+                                        <div class="type-card" onclick="selectType('angular_contact', this)" data-type="angular_contact">
+                                            <div class="icon">⚏</div>
+                                            <div class="name">角接触球轴承</div>
+                                            <div class="desc">7000系列 - 联合载荷</div>
+                                        </div>
+                                        <div class="type-card" onclick="selectType('tapered_roller', this)" data-type="tapered_roller">
+                                            <div class="icon">◐</div>
+                                            <div class="name">圆锥滚子轴承</div>
+                                            <div class="desc">30200系列 - 重载低速</div>
+                                        </div>
+                                        <div class="type-card" onclick="selectType('thrust_ball', this)" data-type="thrust_ball">
+                                            <div class="icon">⬆</div>
+                                            <div class="name">推力球轴承</div>
+                                            <div class="desc">51000系列 - 纯轴向载荷</div>
+                                        </div>
+                                        <div class="type-card" onclick="selectType('self_aligning', this)" data-type="self_aligning">
+                                            <div class="icon">◉</div>
+                                            <div class="name">调心球轴承</div>
+                                            <div class="desc">1200系列 - 轴不对中</div>
+                                        </div>
+                                        <div class="type-card" onclick="selectType('cylindrical_roller', this)" data-type="cylindrical_roller">
+                                            <div class="icon">▬</div>
+                                            <div class="name">圆柱滚子轴承</div>
+                                            <div class="desc">N2000系列 - 高径向载荷</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 校核模式：下拉选择轴承型号 -->
+                                <div id="verify-model-section" style="display:none; margin-top: 24px;">
+                                    <h4 style="margin-bottom: 16px; color: #4a5568;">请选择轴承型号</h4>
+                                    <div class="form-grid" style="max-width: 400px;">
+                                        <div class="form-group">
+                                            <label>轴承型号</label>
+                                            <select id="param-bearing-model" onchange="onBearingModelChange()">
+                                                <option value="">-- 请先选择轴承类型 --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: Parameters -->
+                            <div id="step2" class="wizard-step-content" style="display:none;">
+                                <h3 id="step2-title" style="margin-bottom: 20px; font-size: 18px; color: #2d3748;">请输入工况参数</h3>
+
+                                <div id="params-section-select" class="param-section">
+                                    <h4>载荷与转速 <span style="font-size:12px; color:#718096; font-weight:normal;">（点击参考值可快速填入）</span></h4>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>径向载荷 Fr (N)</label>
+                                            <input type="number" id="param-fr" placeholder="例如: 5000">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-fr', 1000)">1kN</span>
+                                                <span class="ref-tag" onclick="setValue('param-fr', 5000)">5kN</span>
+                                                <span class="ref-tag" onclick="setValue('param-fr', 10000)">10kN</span>
+                                                <span class="ref-tag" onclick="setValue('param-fr', 20000)">20kN</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>轴向载荷 Fa (N)</label>
+                                            <input type="number" id="param-fa" placeholder="例如: 1000">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-fa', 0)">无轴向</span>
+                                                <span class="ref-tag" onclick="setValue('param-fa', 500)">0.5kN</span>
+                                                <span class="ref-tag" onclick="setValue('param-fa', 1000)">1kN</span>
+                                                <span class="ref-tag" onclick="setValue('param-fa', 3000)">3kN</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>转速 n (rpm)</label>
+                                            <input type="number" id="param-speed" placeholder="例如: 1500">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-speed', 720)">720</span>
+                                                <span class="ref-tag" onclick="setValue('param-speed', 960)">960</span>
+                                                <span class="ref-tag" onclick="setValue('param-speed', 1450)">1450</span>
+                                                <span class="ref-tag" onclick="setValue('param-speed', 2900)">2900</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>工作温度 T (°C)</label>
+                                            <input type="number" id="param-temp" value="70">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-temp', 50)">50°C常温</span>
+                                                <span class="ref-tag" onclick="setValue('param-temp', 70)">70°C普通</span>
+                                                <span class="ref-tag" onclick="setValue('param-temp', 100)">100°C较高</span>
+                                                <span class="ref-tag" onclick="setValue('param-temp', 120)">120°C高温</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="params-section-common" class="param-section">
+                                    <h4>安装与润滑</h4>
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>润滑方式</label>
+                                            <select id="param-lub">
+                                                <option value="grease">脂润滑（常用）</option>
+                                                <option value="oil_bath">油浴润滑</option>
+                                                <option value="oil_mist">油气润滑</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>可靠度</label>
+                                            <select id="param-reliability">
+                                                <option value="0.9">90% (L10) - 一般用途</option>
+                                                <option value="0.95">95% (L5) - 重要设备</option>
+                                                <option value="0.99">99% (L1) - 关键设备</option>
+                                            </select>
+                                        </div>
+                                        <div id="param-bore-max-group" class="form-group">
+                                            <label>轴径上限 (mm)</label>
+                                            <input type="number" id="param-bore-max" placeholder="不限制">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-bore-max', 50)">≤50mm</span>
+                                                <span class="ref-tag" onclick="setValue('param-bore-max', 80)">≤80mm</span>
+                                                <span class="ref-tag" onclick="clearValue('param-bore-max')">不限</span>
+                                            </div>
+                                        </div>
+                                        <div id="param-life-group" class="form-group">
+                                            <label>需求寿命 (小时)</label>
+                                            <input type="number" id="param-life" value="10000">
+                                            <div class="ref-values">
+                                                <span class="ref-tag" onclick="setValue('param-life', 5000)">5Kh - 短周期</span>
+                                                <span class="ref-tag" onclick="setValue('param-life', 10000)">10Kh - 普通</span>
+                                                <span class="ref-tag" onclick="setValue('param-life', 20000)">20Kh - 较长</span>
+                                                <span class="ref-tag" onclick="setValue('param-life', 50000)">50Kh - 长期</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 3: Select Model -->
+                            <div id="step3" class="wizard-step-content" style="display:none;">
+                                <h3 style="margin-bottom: 20px; font-size: 18px; color: #2d3748;">候选轴承型号（推荐选绿色高亮项）</h3>
+                                <div id="candidates-list"></div>
+                            </div>
+
+                            <!-- Step 4: Results -->
+                            <div id="step4" class="wizard-step-content" style="display:none;">
+                                <div id="final-report"></div>
+                            </div>
+
+                            <!-- Knowledge Base (shown as overlay) -->
+                            <div id="knowledge-base" class="wizard-step-content" style="display:none;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <h3 style="color: #1a365d;">📚 轴承知识库</h3>
+                                    <button class="btn btn-secondary" onclick="hideKnowledgeBase()">返回选型</button>
+                                </div>
+                                <div class="kb-category">
+                                    <div class="kb-cat-header" onclick="toggleKbCat(this)">
+                                        <span class="arrow">▶</span>选型设计指南
+                                    </div>
+                                    <div class="kb-cat-content">
+                                        <div class="kb-item"><b>载荷类型判断：</b>纯径向载荷选深沟球/圆柱滚子；联合载荷选角接触/圆锥滚子；纯轴向载荷选推力球轴承。</div>
+                                        <div class="kb-item"><b>转速限制：</b>深沟球>角接触>圆锥滚子>推力球。实际转速应&lt;极限转速的80%。</div>
+                                        <div class="kb-item"><b>寿命计算：</b>ISO 281 L10寿命 = (C/P)^3 × 10^6/(60n) 小时。温度、润滑、可靠度均有修正系数。</div>
+                                        <div class="kb-item kb-tip"><b>💡 经济性：</b>安全系数1.5~2.5x最经济。过低风险大，过高浪费。</div>
+                                    </div>
+                                </div>
+                                <div class="kb-category">
+                                    <div class="kb-cat-header" onclick="toggleKbCat(this)">
+                                        <span class="arrow">▶</span>安装规范
+                                    </div>
+                                    <div class="kb-cat-content">
+                                        <div class="kb-item"><b>安装前：</b>核对型号、检查外观、清洁轴颈和轴承座、确认公差配合。</div>
+                                        <div class="kb-item"><b>加热安装：</b>油浴加热80~100°C，不超过120°C；感应加热需控制温度和时间。</div>
+                                        <div class="kb-item"><b>冷压安装：</b>冷缩至-30°C，迅速套装，使用专用套筒均匀施力。</div>
+                                        <div class="kb-item kb-warning"><b>⚠️ 注意：</b>只传递力到待配合套圈，严禁敲击滚动体和保持架。</div>
+                                    </div>
+                                </div>
+                                <div class="kb-category">
+                                    <div class="kb-cat-header" onclick="toggleKbCat(this)">
+                                        <span class="arrow">▶</span>润滑保养
+                                    </div>
+                                    <div class="kb-cat-content">
+                                        <div class="kb-item"><b>润滑脂：</b>普通工况用锂基脂(-20~120°C)；高温用复合锂基或聚脲脂；潮湿用钙基脂。</div>
+                                        <div class="kb-item"><b>润滑油：</b>普通IS VG 32~68；高速低粘度IS VG 15~32；重载高粘度IS VG 100~220。</div>
+                                        <div class="kb-item"><b>补充周期：</b>脂润滑6个月~2年；油润滑定期检查及时添加；高温/污染环境需缩短。</div>
+                                    </div>
+                                </div>
+                                <div class="kb-category">
+                                    <div class="kb-cat-header" onclick="toggleKbCat(this)">
+                                        <span class="arrow">▶</span>故障排查
+                                    </div>
+                                    <div class="kb-cat-content">
+                                        <div class="kb-item"><b>周期性噪声：</b>滚动体通过频率，可能有异物或磨损。</div>
+                                        <div class="kb-item"><b>温升过高：</b>润滑不足/过量、间隙过小、外部热源、预紧过大。</div>
+                                        <div class="kb-item"><b>振动异常：</b>轴向振动大查推力轴承；径向振动大查间隙和配合。</div>
+                                        <div class="kb-item kb-warning"><b>⚠️ 立即停机：</b>温升超额定15°C、不规则撞击声、振动突增、异常变色。</div>
+                                    </div>
+                                </div>
+                                <div class="kb-category">
+                                    <div class="kb-cat-header" onclick="toggleKbCat(this)">
+                                        <span class="arrow">▶</span>存储保管
+                                    </div>
+                                    <div class="kb-cat-content">
+                                        <div class="kb-item"><b>环境：</b>室温15~25°C，相对湿度&lt;60%，避免阳光直射和腐蚀性气体。</div>
+                                        <div class="kb-item"><b>方式：</b>原包装水平放置，禁止重物压放；大型轴承定期转动防止压痕。</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="wizard-footer">
+                            <button class="btn btn-secondary" id="btn-prev" onclick="prevStep()" style="display:none;">上一步</button>
+                            <div style="display:flex; gap:12px;">
+                                <button class="btn btn-secondary" id="btn-knowledge" onclick="showKnowledgeBase()" style="display:none;">📚 知识库</button>
+                                <button class="btn btn-secondary" id="btn-export" onclick="exportReport()" style="display:none;">📥 导出结果</button>
+                                <button class="btn btn-primary" id="btn-next" onclick="nextStep()">下一步</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API = '/api/standard-parts';
+
+        window.wizardState = {
+            currentStep: 1,
+            totalSteps: 4,
+            mode: 'select_by_params',  // 'select_by_params' or 'verify_model'
+            selectedType: 'deep_groove',
+            params: {},
+            candidates: [],
+            selectedBearing: null
+        };
+
+        function showPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + page).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            event.target.closest('.nav-item')?.classList.add('active');
+            const titles = {home: '首页', bearing: '轴承选型向导'};
+            document.getElementById('page-title').textContent = titles[page] || '轴承选型向导';
+        }
+
+        function toggleKbCat(header) {
+            header.classList.toggle('open');
+            header.nextElementSibling.classList.toggle('open');
+        }
+
+        function showKnowledgeBase() {
+            document.querySelectorAll('.wizard-step-content').forEach(s => s.style.display = 'none');
+            document.getElementById('knowledge-base').style.display = 'block';
+            document.getElementById('btn-prev').style.display = 'none';
+            document.getElementById('btn-next').textContent = '返回选型';
+            document.getElementById('btn-export').style.display = 'none';
+            document.getElementById('btn-knowledge').style.display = 'none';
+            wizardState.currentStep = 99; // Mark as knowledge view
+        }
+
+        function hideKnowledgeBase() {
+            document.getElementById('knowledge-base').style.display = 'none';
+            document.getElementById('step1').style.display = 'block';
+            document.getElementById('btn-prev').style.display = 'none';
+            document.getElementById('btn-next').textContent = '下一步';
+            document.getElementById('btn-export').style.display = 'none';
+            document.getElementById('btn-knowledge').style.display = 'none';
+            wizardState.currentStep = 1;
+        }
+
+        function setValue(id, value) {
+            document.getElementById(id).value = value;
+        }
+
+        function clearValue(id) {
+            document.getElementById(id).value = '';
+        }
+
+        function selectMode(mode, el) {
+            wizardState.mode = mode;
+            document.querySelectorAll('#step1 .type-card').forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+
+            if (mode === 'knowledge') {
+                document.getElementById('btn-next').textContent = '查看知识库';
+                document.getElementById('btn-prev').style.display = 'block';
+                document.getElementById('btn-export').style.display = 'none';
+                document.getElementById('btn-knowledge').style.display = 'none';
+            } else {
+                document.getElementById('btn-next').textContent = '下一步';
+                if (mode === 'verify_model') {
+                    document.getElementById('verify-model-section').style.display = 'block';
+                    document.getElementById('param-bore-max-group').style.display = 'none';
+                    document.getElementById('param-life-group').style.display = 'none';
+                    document.getElementById('step2-title').textContent = '请输入工况参数（用于校核）';
+                    loadBearingModels();
+                } else {
+                    document.getElementById('verify-model-section').style.display = 'none';
+                    document.getElementById('param-bore-max-group').style.display = 'block';
+                    document.getElementById('param-life-group').style.display = 'block';
+                    document.getElementById('step2-title').textContent = '请输入工况参数';
+                }
+            }
+        }
+
+        async function loadBearingModels() {
+            const select = document.getElementById('param-bearing-model');
+            select.innerHTML = '<option value="">加载中...</option>';
+
+            try {
+                const res = await fetch(API + '/bearings?type=' + wizardState.selectedType)
+                    .then(r => r.json());
+
+                if (res.success && res.data.length) {
+                    select.innerHTML = '<option value="">-- 选择轴承型号 --</option>';
+                    res.data.forEach(b => {
+                        select.innerHTML += `<option value="${b.id}">${b.model} (${b.bore_diameter}×${b.outer_diameter}×${b.width}mm)</option>`;
+                    });
+                } else {
+                    select.innerHTML = '<option value="">该类型暂无轴承数据</option>';
+                }
+            } catch (e) {
+                select.innerHTML = '<option value="">加载失败</option>';
+            }
+        }
+
+        function onBearingModelChange() {
+            const select = document.getElementById('param-bearing-model');
+            wizardState.selectedBearing = select.value ? parseInt(select.value) : null;
+        }
+
+        function selectType(type, el) {
+            wizardState.selectedType = type;
+            document.querySelectorAll('#type-section .type-card').forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+            // 如果是校核模式，重新加载轴承型号下拉框
+            if (wizardState.mode === 'verify_model') {
+                loadBearingModels();
+            }
+        }
+
+        function updateStepIndicator() {
+            for (let i = 1; i <= 4; i++) {
+                const circle = document.getElementById('step' + i + '-circle');
+                const label = document.getElementById('step' + i + '-label');
+                const isCompleted = i < wizardState.currentStep;
+                const isActive = i === wizardState.currentStep;
+
+                circle.className = 'step-circle ' + (isCompleted ? 'completed' : isActive ? 'active' : 'pending');
+                label.className = 'step-label' + (isActive ? ' active' : '');
+
+                if (i > 1) {
+                    const line = document.getElementById('line' + (i-1) + '-' + i);
+                    if (line) line.className = 'step-line' + (isCompleted ? ' completed' : '');
+                }
+            }
+        }
+
+        function showStep(step) {
+            document.querySelectorAll('.wizard-step-content').forEach(s => s.style.display = 'none');
+            document.getElementById('step' + step).style.display = 'block';
+            wizardState.currentStep = step;
+            updateStepIndicator();
+
+            // Update buttons
+            document.getElementById('btn-prev').style.display = step > 1 ? 'block' : 'none';
+            document.getElementById('btn-export').style.display = step === 4 ? 'block' : 'none';
+            document.getElementById('btn-knowledge').style.display = step === 4 ? 'block' : 'none';
+            document.getElementById('btn-next').textContent = step === 3 ? '查看结果' : step === 4 ? '重新选型' : '下一步';
+
+            // Update API call for step 3
+            if (step === 3) {
+                loadCandidates();
+            }
+        }
+
+        function prevStep() {
+            if (wizardState.currentStep === 99) {
+                hideKnowledgeBase();
+            } else if (wizardState.currentStep > 1) {
+                showStep(wizardState.currentStep - 1);
+            }
+        }
+
+        async function nextStep() {
+            if (wizardState.currentStep === 1) {
+                if (wizardState.mode === 'knowledge') {
+                    showKnowledgeBase();
+                } else {
+                    showStep(2);
+                }
+            } else if (wizardState.currentStep === 2) {
+                if (wizardState.mode === 'verify_model') {
+                    // 型号校核模式：直接查询轴承信息并显示结果
+                    await verifyBearingModel();
+                } else {
+                    // 参数选型模式：加载候选轴承
+                    showStep(3);
+                }
+            } else if (wizardState.currentStep === 3) {
+                if (wizardState.selectedBearing) {
+                    showStep(4);
+                } else {
+                    alert('请先选择轴承型号');
+                }
+            } else if (wizardState.currentStep === 4) {
+                // Restart
+                wizardState = { currentStep: 1, totalSteps: 4, mode: 'select_by_params', selectedType: 'deep_groove', params: {}, candidates: [], selectedBearing: null };
+                showStep(1);
+            } else if (wizardState.currentStep === 99) {
+                // From knowledge base, return to step 1
+                hideKnowledgeBase();
+            }
+        }
+
+        async function verifyBearingModel() {
+            const bearingId = parseInt(document.getElementById('param-bearing-model').value);
+            if (!bearingId) {
+                alert('请选择轴承型号');
+                return;
+            }
+
+            const params = {
+                bearing_type: wizardState.selectedType,
+                fr: parseFloat(document.getElementById('param-fr').value) || 0,
+                fa: parseFloat(document.getElementById('param-fa').value) || 0,
+                speed: parseFloat(document.getElementById('param-speed').value) || 0,
+                temperature: parseFloat(document.getElementById('param-temp').value) || 70,
+                lubrication: document.getElementById('param-lub').value,
+                reliability: parseFloat(document.getElementById('param-reliability').value) || 0.9
+            };
+            wizardState.params = params;
+
+            try {
+                const calcRes = await fetch(API + '/bearings/wizard/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bearing_id: bearingId,
+                        fr: params.fr,
+                        fa: params.fa,
+                        speed: params.speed,
+                        temperature: params.temperature,
+                        lubrication: params.lubrication,
+                        reliability: params.reliability
+                    })
+                }).then(r => r.json());
+
+                if (calcRes.success) {
+                    wizardState.selectedBearing = bearingId;
+                    renderFinalReport(calcRes.data.specifications);
+                    showStep(4);
+                } else {
+                    alert('计算失败: ' + (calcRes.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+        }
+
+        async function loadCandidates() {
+            const params = {
+                bearing_type: wizardState.selectedType,
+                fr: parseFloat(document.getElementById('param-fr').value) || 0,
+                fa: parseFloat(document.getElementById('param-fa').value) || 0,
+                speed: parseFloat(document.getElementById('param-speed').value) || 0,
+                temperature: parseFloat(document.getElementById('param-temp').value) || 70,
+                lubrication: document.getElementById('param-lub').value,
+                reliability: parseFloat(document.getElementById('param-reliability').value) || 0.9,
+                bore_max: parseFloat(document.getElementById('param-bore-max').value) || null,
+                required_life_hours: parseFloat(document.getElementById('param-life').value) || 10000
+            };
+            wizardState.params = params;
+
+            try {
+                const res = await fetch(API + '/bearings/wizard/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                }).then(r => r.json());
+
+                if (res.success) {
+                    wizardState.candidates = res.data.candidates || [];
+                    renderCandidates();
+                } else {
+                    document.getElementById('candidates-list').innerHTML =
+                        '<p style="color:#e53e3e;">' + (res.error || '查询失败') + '</p>';
+                }
+            } catch (e) {
+                document.getElementById('candidates-list').innerHTML =
+                    '<p style="color:#e53e3e;">请求失败: ' + e.message + '</p>';
+            }
+        }
+
+        function renderCandidates() {
+            const list = document.getElementById('candidates-list');
+            if (!wizardState.candidates.length) {
+                list.innerHTML = '<p style="color:#718096;">未找到符合条件的轴承</p>';
+                return;
+            }
+
+            list.innerHTML = wizardState.candidates.map((c, i) => {
+                const b = c.bearing;
+                const sf = c.safety_factor;
+                const sfClass = sf >= 2 ? 'good' : sf >= 1.5 ? '' : 'bad';
+                const isRecommended = i === 0;
+                return `
+                    <div class="result-card ${isRecommended ? 'recommended' : ''}" onclick="selectCandidate(${c.bearing.id}, this)">
+                        <div class="rank">${isRecommended ? '⭐ 推荐' : '候选 ' + (i + 1)}</div>
+                        <div class="model">${b.model}</div>
+                        <div class="dims">内径 ${b.bore_diameter}mm | 外径 ${b.outer_diameter}mm | 宽度 ${b.width}mm</div>
+                        <div class="sf ${sfClass}">安全系数: ${sf.toFixed(1)}x</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function selectCandidate(bearingId, el) {
+            document.querySelectorAll('.result-card').forEach(c => c.classList.remove('recommended'));
+            el.classList.add('recommended');
+            wizardState.selectedBearing = bearingId;
+
+            // Load full specs
+            try {
+                const params = wizardState.params;
+                const res = await fetch(API + '/bearings/wizard/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bearing_id: bearingId,
+                        fr: params.fr,
+                        fa: params.fa,
+                        speed: params.speed,
+                        temperature: params.temperature,
+                        lubrication: params.lubrication,
+                        reliability: params.reliability
+                    })
+                }).then(r => r.json());
+
+                if (res.success) {
+                    renderFinalReport(res.data.specifications);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+async function exportReport() {
+            if (!window.wizardSpec || !window.wizardState?.params) {
+                alert('请先完成选型');
+                return;
+            }
+            try {
+                const response = await fetch('/api/standard-parts/bearings/export/excel', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        specifications: window.wizardSpec,
+                        params: window.wizardState.params
+                    })
+                });
+                if (!response.ok) throw new Error('导出失败');
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const model = window.wizardSpec?.bearing?.model || 'report';
+                const date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+                const prefix = window.wizardState?.mode === 'verify_model' ? '轴承校核' : '轴承选型';
+                a.download = `${prefix}_${model}_${date}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('导出失败: ' + e.message);
+            }
+        }
+
+
+
+        function renderFinalReport(spec) {
+            window.wizardSpec = spec;
+            const b = spec.bearing;
+            const ml = spec.modified_life;
+            const sc = spec.static_check;
+            const st = spec.stiffness;
+            const isVerifyMode = wizardState.mode === 'verify_model';
+            const reportTitle = isVerifyMode ? '校核结果' : '选型结果';
+
+            document.getElementById('final-report').innerHTML = `
+                <div class="report-header">
+                    <h3>${reportTitle}</h3>
+                    <div class="model">${b.model}</div>
+                    <div>${b.bore_diameter} × ${b.outer_diameter} × ${b.width} mm</div>
+                </div>
+
+                <div class="report-specs">
+                    <div class="spec-item">
+                        <div class="value">${((ml?.l10m_life_hours) || 0).toFixed(0)}</div>
+                        <div class="label">修正L10m寿命 (小时)</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="value ${sc?.passed ? 'pass' : 'fail'}">${sc?.passed ? '通过' : '未通过'}</div>
+                        <div class="label">静载荷校核</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="value">${(st?.radial_stiffness_N_per_um || 0).toFixed(1)}</div>
+                        <div class="label">径向刚度 (N/μm)</div>
+                    </div>
+                </div>
+
+                <div class="spec-section">
+                    <h4>基本参数</h4>
+                    <div class="spec-row"><span class="label">型号</span><span class="value">${b.model}</span></div>
+                    <div class="spec-row"><span class="label">类型</span><span class="value">${spec.bearing_type}</span></div>
+                    <div class="spec-row"><span class="label">动载荷额定值 C</span><span class="value">${b.dynamic_load_rating} N</span></div>
+                    <div class="spec-row"><span class="label">静载荷额定值 C0</span><span class="value">${b.static_load_rating} N</span></div>
+                    <div class="spec-row"><span class="label">极限转速</span><span class="value">${b.max_speed} rpm</span></div>
+                </div>
+
+                <div class="spec-section">
+                    <h4>寿命计算</h4>
+                    <div class="spec-row"><span class="label">当量动载荷 P</span><span class="value">${(spec.equivalent_load_P || 0).toFixed(1)} N</span></div>
+                    <div class="spec-row"><span class="label">L10基本寿命</span><span class="value">${((ml?.l10_life_hours) || 0).toFixed(0)} 小时</span></div>
+                    <div class="spec-row"><span class="label">L10m修正寿命</span><span class="value">${((ml?.l10m_life_hours) || 0).toFixed(0)} 小时</span></div>
+                    <div class="spec-row"><span class="label">可靠度因子 a1</span><span class="value">${(ml?.reliability_factor_a1 || 1).toFixed(2)}</span></div>
+                    <div class="spec-row"><span class="label">综合因子 aISO</span><span class="value">${(ml?.composite_factor_a_iso || 0).toFixed(2)}</span></div>
+                </div>
+
+                <div class="spec-section">
+                    <h4>静载荷校核</h4>
+                    <div class="spec-row"><span class="label">当量静载荷 P0</span><span class="value">${(sc?.equivalent_static_load || 0).toFixed(1)} N</span></div>
+                    <div class="spec-row"><span class="label">安全系数 s0</span><span class="value ${sc?.passed ? 'pass' : 'fail'}">${(sc?.safety_factor || 0).toFixed(2)}</span></div>
+                    <div class="spec-row"><span class="label">校核结果</span><span class="value"><span class="status-badge ${sc?.passed ? 'status-pass' : 'status-fail'}">${sc?.passed ? '通过' : '未通过'}</span></span></div>
+                </div>
+
+                <div class="spec-section">
+                    <h4>刚度参数</h4>
+                    <div class="spec-row"><span class="label">径向刚度</span><span class="value">${(st?.radial_stiffness_N_per_um || 0).toFixed(1)} N/μm</span></div>
+                    <div class="spec-row"><span class="label">轴向刚度</span><span class="value">${(st?.axial_stiffness_N_per_um || 0).toFixed(1)} N/μm</span></div>
+                </div>
+            `;
+        }
+
+        // Initialize
+        showStep(1);
+    </script>
+</body>
+</html>
